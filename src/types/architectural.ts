@@ -60,6 +60,28 @@ export interface ArchitecturalModel {
   style: string;
   created: Date;
   modified: Date;
+  // Product-specific fields (optional for backward compatibility)
+  productSpecs?: {
+    name: string;
+    description: string;
+    style: string;
+    components: any[];
+    totalVolume?: number;
+    manufacturing?: {
+      method: string;
+      materials: string[];
+      complexity: string;
+      estimated_cost: string;
+    };
+    specifications?: {
+      weight: string;
+      dimensions: { length: number; width: number; height: number };
+      color_options: string[];
+      durability: string;
+    };
+  };
+  manufacturing?: any;
+  specifications?: any;
 }
 
 // Input modality types

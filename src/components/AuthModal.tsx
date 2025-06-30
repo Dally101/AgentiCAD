@@ -225,7 +225,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode, onModeChan
         
         // Call success callback after a short delay to ensure modal is closed
         setTimeout(() => {
-          onSuccess?.()
+        onSuccess?.()
         }, 100)
       }
     } catch (error: any) {

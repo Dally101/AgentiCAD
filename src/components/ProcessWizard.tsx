@@ -151,39 +151,101 @@ const ThreeDModelViewer: React.FC<{
       {/* Model Information Panel */}
       {model && (
         <div className="max-w-6xl mx-auto bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6">
-          <h3 className="text-xl font-semibold text-white mb-4">Model Information</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <h4 className="text-cyan-400 font-medium mb-2">Components ({model.rooms.length})</h4>
-              <ul className="text-gray-300 space-y-1">
-                {model.rooms.map(room => (
-                  <li key={room.id} className="text-sm">
-                    {room.name.replace('_', ' ')} - {room.dimensions.width}cm × {room.dimensions.length}cm × {room.dimensions.height}cm
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-cyan-400 font-medium mb-2">Specifications</h4>
-              <ul className="text-gray-300 space-y-1">
-                <li className="text-sm">{model.rooms.length} components</li>
-                <li className="text-sm">{model.totalArea} cm³ volume</li>
-                <li className="text-sm capitalize">{model.style} style</li>
-                <li className="text-sm">Prototype ready</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-cyan-400 font-medium mb-2">Actions</h4>
-              <div className="space-y-2">
-                <button className="w-full px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors text-sm">
-                  Export STL
-                </button>
-                <button className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm">
-                  Send to Manufacturer
-                </button>
+          <h3 className="text-xl font-semibold text-white mb-4">
+            {model.productSpecs?.name || model.name}
+          </h3>
+          
+          {/* Show AI-generated product specs if available */}
+          {model.productSpecs ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <h4 className="text-cyan-400 font-medium mb-2">Components ({model.productSpecs.components.length})</h4>
+                <ul className="text-gray-300 space-y-2">
+                  {model.productSpecs.components.map((component: any, index: number) => (
+                    <li key={index} className="text-sm border-l-2 border-cyan-500/30 pl-3">
+                      <div className="font-medium text-white">{component.name}</div>
+                      <div className="text-xs text-gray-400">{component.material}</div>
+                      <div className="text-xs">
+                        {component.dimensions.width}×{component.dimensions.length}×{component.dimensions.height}cm
+                      </div>
+                      <div className="text-xs text-cyan-300">{component.function}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div>
+                <h4 className="text-cyan-400 font-medium mb-2">Manufacturing</h4>
+                <ul className="text-gray-300 space-y-1">
+                  <li className="text-sm"><span className="text-white">Method:</span> {model.productSpecs.manufacturing?.method}</li>
+                  <li className="text-sm"><span className="text-white">Materials:</span> {model.productSpecs.manufacturing?.materials?.join(', ')}</li>
+                  <li className="text-sm"><span className="text-white">Complexity:</span> {model.productSpecs.manufacturing?.complexity}</li>
+                  <li className="text-sm"><span className="text-white">Cost:</span> {model.productSpecs.manufacturing?.estimated_cost}</li>
+                </ul>
+              </div>
+              
+              <div>
+                <h4 className="text-cyan-400 font-medium mb-2">Specifications</h4>
+                <ul className="text-gray-300 space-y-1">
+                  <li className="text-sm"><span className="text-white">Weight:</span> {model.productSpecs.specifications?.weight}</li>
+                  <li className="text-sm"><span className="text-white">Volume:</span> {model.productSpecs.totalVolume} cm³</li>
+                  <li className="text-sm"><span className="text-white">Style:</span> {model.productSpecs.style}</li>
+                  <li className="text-sm"><span className="text-white">Durability:</span> {model.productSpecs.specifications?.durability}</li>
+                </ul>
+                
+                <div className="mt-4 space-y-2">
+                  <button className="w-full px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors text-sm">
+                    Export STL
+                  </button>
+                  <button className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm">
+                    Send to Manufacturer
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            // Fallback to old format if no product specs
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <h4 className="text-cyan-400 font-medium mb-2">Components ({model.rooms.length})</h4>
+                <ul className="text-gray-300 space-y-1">
+                  {model.rooms.map(room => (
+                    <li key={room.id} className="text-sm">
+                      {room.name.replace('_', ' ')} - {room.dimensions.width}cm × {room.dimensions.length}cm × {room.dimensions.height}cm
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-cyan-400 font-medium mb-2">Specifications</h4>
+                <ul className="text-gray-300 space-y-1">
+                  <li className="text-sm">{model.rooms.length} components</li>
+                  <li className="text-sm">{model.totalArea} cm³ volume</li>
+                  <li className="text-sm capitalize">{model.style} style</li>
+                  <li className="text-sm">Prototype ready</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-cyan-400 font-medium mb-2">Actions</h4>
+                <div className="space-y-2">
+                  <button className="w-full px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors text-sm">
+                    Export STL
+                  </button>
+                  <button className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-sm">
+                    Send to Manufacturer
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Product Description */}
+          {model.productSpecs?.description && (
+            <div className="mt-6 pt-6 border-t border-white/20">
+              <h4 className="text-cyan-400 font-medium mb-2">Product Description</h4>
+              <p className="text-gray-300 text-sm leading-relaxed">{model.productSpecs.description}</p>
+            </div>
+          )}
         </div>
       )}
     </div>

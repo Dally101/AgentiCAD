@@ -231,7 +231,7 @@ Focus on extracting actionable product design information that can be used to ge
       const response = await this.callOpenAI([
         {
           role: 'system',
-          content: 'You are an expert architectural analyst. Return only valid JSON responses.'
+          content: 'You are an expert product design analyst specializing in physical product development and manufacturing. Return only valid JSON responses focused on product specifications.'
         },
         {
           role: 'user', 
@@ -254,9 +254,9 @@ Focus on extracting actionable product design information that can be used to ge
         result.confidence = 0.7;
       }
 
-      // Cache the successful result
+      // Cache the successful result (shorter TTL for more variation)
       await cacheService.cacheTextAnalysis(text, result, {
-        ttl: 24 * 60 * 60 * 1000, // 24 hours
+        ttl: 5 * 60 * 1000, // 5 minutes for generation requests
         syncToCloud: true
       });
 
@@ -281,9 +281,9 @@ Focus on extracting actionable product design information that can be used to ge
           result.confidence = 0.6;
         }
 
-        // Cache the Gemini result
+        // Cache the Gemini result (shorter TTL for more variation)
         await cacheService.cacheTextAnalysis(text, result, {
-          ttl: 12 * 60 * 60 * 1000, // 12 hours (shorter for fallback)
+          ttl: 10 * 60 * 1000, // 10 minutes for generation requests
           syncToCloud: true
         });
 
@@ -294,9 +294,9 @@ Focus on extracting actionable product design information that can be used to ge
         // Final fallback to rule-based analysis
         const fallbackResult = cacheService.getFallbackData('text_analysis', { input: text });
         
-        // Cache the fallback result for a short time
+        // Cache the fallback result for a very short time to allow variation
         await cacheService.cacheTextAnalysis(text, fallbackResult, {
-          ttl: 1 * 60 * 60 * 1000, // 1 hour
+          ttl: 1 * 60 * 1000, // 1 minute only for fallback 
           syncToCloud: false // Don't sync fallback data to cloud
         });
 
@@ -438,31 +438,44 @@ Focus on extracting actionable product design information that can be used to ge
    * Clean JSON response by removing markdown code blocks and other formatting
    */
   private cleanJsonResponse(content: string): string {
+    console.log('🔍 Raw AI response:', content);
+    
     // Remove markdown code blocks
-    let cleaned = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    let cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
     
     // Remove any leading/trailing whitespace
     cleaned = cleaned.trim();
     
-    // If the response starts with text before JSON, try to extract just the JSON part
-    const jsonStart = cleaned.indexOf('{');
-    const jsonEnd = cleaned.lastIndexOf('}');
-    
-    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-      cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+    // Try to extract JSON from the response - look for curly braces
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
     }
     
-    // If still not valid JSON, return empty object
+    // Fix common JSON issues
+    cleaned = cleaned
+      .replace(/\/\/.*$/gm, '')  // Remove line comments
+      .replace(/\/\*[\s\S]*?\*\//g, '')  // Remove block comments
+      .replace(/'/g, '"')  // Replace single quotes with double quotes
+      .replace(/([{,]\s*)(\w+):/g, '$1"$2":')  // Quote unquoted keys
+      .replace(/:\s*([^",\[\]{}]+)([,}])/g, ':"$1"$2')  // Quote unquoted string values
+      .replace(/,\s*}/g, '}')  // Remove trailing commas
+      .replace(/,\s*]/g, ']');  // Remove trailing commas in arrays
+    
+    console.log('🧹 Cleaned response:', cleaned);
+    
+    // Test if it's valid JSON
     try {
-      JSON.parse(cleaned);
+      const parsed = JSON.parse(cleaned);
+      console.log('✅ JSON parsed successfully:', parsed);
       return cleaned;
-    } catch {
-      console.warn('Could not clean JSON response, returning empty object');
+    } catch (error) {
+      console.warn('❌ Could not clean JSON response:', error);
+      console.log('Original content length:', content.length);
+      console.log('First 200 chars:', content.substring(0, 200));
       return '{}';
     }
   }
-
-
 
   /**
    * Call OpenAI API via Pica passthrough
@@ -584,6 +597,7 @@ Focus on extracting actionable product design information that can be used to ge
    * Fallback text analysis using regex patterns
    */
   private async analyzeTextFallback(text: string): Promise<any> {
+    console.log('📝 Using fallback text analysis for:', text);
     const lowercaseText = text.toLowerCase();
     const analysis = {
       requirements: [] as string[],
@@ -597,17 +611,21 @@ Focus on extracting actionable product design information that can be used to ge
       use_case: '' as string
     };
 
-    // Extract product components
+    // Extract product components - enhanced for kitchen utensils
     const componentPatterns = {
+      'holder_body': /holder|container|organizer|rack|caddy|stand/gi,
       'handle': /handle|grip|hold/gi,
       'body': /body|main|core|base/gi,
+      'compartments': /compartment|slot|divider|section|pocket/gi,
+      'base': /base|bottom|foundation|platform/gi,
       'interface': /button|screen|display|control/gi,
       'cover': /cover|lid|top|cap/gi,
       'stand': /stand|support|leg|mount/gi,
       'connector': /connector|plug|port|cable/gi,
       'sensor': /sensor|detector|monitor/gi,
       'battery': /battery|power|energy/gi,
-      'speaker': /speaker|audio|sound/gi
+      'speaker': /speaker|audio|sound/gi,
+      'slots': /slot|opening|hole|space/gi
     };
 
     Object.entries(componentPatterns).forEach(([componentType, pattern]) => {
@@ -647,8 +665,15 @@ Focus on extracting actionable product design information that can be used to ge
       }
     });
 
-    // Extract product features
+    // Extract product features - enhanced for kitchen products
     const featurePatterns = {
+      'organizing': /organiz|stor|hold|contain|arrang/gi,
+      'kitchen_safe': /food.safe|bpa.free|dishwasher|kitchen/gi,
+      'stable': /stable|steady|secure|firm|non.slip/gi,
+      'modular': /modular|customizable|expandable|adjustable/gi,
+      'easy_clean': /easy.clean|washable|wipe|maintenance/gi,
+      'space_saving': /space.saving|compact|efficient|countertop/gi,
+      'utensil_specific': /utensil|spoon|fork|knife|spatula|whisk|tool/gi,
       'wireless': /wireless|bluetooth|wifi/gi,
       'waterproof': /waterproof|water.resistant|sealed/gi,
       'portable': /portable|mobile|carry|travel/gi,
@@ -665,21 +690,33 @@ Focus on extracting actionable product design information that can be used to ge
       }
     });
 
-    // Extract use case
-    if (/kitchen|cook|food|culinary/gi.test(text)) {
-      analysis.use_case = 'kitchen';
-    } else if (/office|work|desk|business/gi.test(text)) {
-      analysis.use_case = 'office';
-    } else if (/home|household|domestic/gi.test(text)) {
-      analysis.use_case = 'home';
-    } else if (/tech|electronic|digital|smart/gi.test(text)) {
-      analysis.use_case = 'technology';
-    } else if (/outdoor|garden|yard|exterior/gi.test(text)) {
-      analysis.use_case = 'outdoor';
+    // Extract use case - more specific detection
+    if (/kitchen|cook|food|culinary|utensil|spoon|fork|knife|spatula|whisk|cutting|chef/gi.test(text)) {
+      analysis.use_case = 'kitchen organization';
+    } else if (/office|work|desk|business|pen|pencil|document/gi.test(text)) {
+      analysis.use_case = 'office organization';
+    } else if (/home|household|domestic|living|bedroom|bathroom/gi.test(text)) {
+      analysis.use_case = 'home organization';
+    } else if (/tech|electronic|digital|smart|phone|tablet|computer/gi.test(text)) {
+      analysis.use_case = 'technology accessory';
+    } else if (/outdoor|garden|yard|exterior|camping|hiking/gi.test(text)) {
+      analysis.use_case = 'outdoor equipment';
+    } else if (/tool|workshop|garage|repair|maintenance/gi.test(text)) {
+      analysis.use_case = 'tool organization';
     } else {
-      analysis.use_case = 'general';
+      analysis.use_case = 'general organization';
     }
 
+    // Enhanced fallback logic for specific product types
+    if (/utensil.*holder|kitchen.*organizer|cutlery.*stand/gi.test(text)) {
+      // Specific detection for kitchen utensil holders
+      analysis.components = ['holder_body', 'compartments', 'base'];
+      analysis.features = ['organizing', 'kitchen_safe', 'stable', 'easy_clean'];
+      analysis.materials = ['stainless steel', 'bamboo', 'plastic'];
+      analysis.requirements = ['organize utensils', 'stable base', 'easy to clean'];
+      analysis.style = 'modern';
+    }
+    
     // Ensure we have at least some basic data
     if (analysis.components.length === 0) {
       analysis.components = ['body', 'interface'];
@@ -694,6 +731,7 @@ Focus on extracting actionable product design information that can be used to ge
       analysis.requirements = ['durable', 'functional'];
     }
 
+    console.log('📊 Fallback analysis result:', analysis);
     return analysis;
   }
 
@@ -785,15 +823,19 @@ Focus on extracting actionable product design information that can be used to ge
 
     const model: ArchitecturalModel = {
       id: modelId,
-      name: productSpecs.name || `${preferences.style} Product Design`,
-      description: productSpecs.description || `A ${preferences.style} product with ${components.length} components`,
+      name: productSpecs.name || `${preferences?.style || 'Modern'} Product Design`,
+      description: productSpecs.description || `A ${preferences?.style || 'modern'} product with ${components.length} components`,
       rooms: components, // Using 'rooms' field for components for compatibility
-      doors: [], // Products don't have doors
+      doors: [], // Products don't have doors  
       windows: [], // Products don't have windows
       totalArea: productSpecs.totalVolume || 100, // Using area field for volume
-      style: productSpecs.style || preferences.style,
+      style: productSpecs.style || preferences?.style || 'modern',
       created: new Date(),
-      modified: new Date()
+      modified: new Date(),
+      // Add product-specific data to the model for better display
+      productSpecs: productSpecs, // Store the full AI-generated specifications
+      manufacturing: productSpecs.manufacturing,
+      specifications: productSpecs.specifications
     };
 
     console.log('Generated product model:', model);
@@ -804,6 +846,15 @@ Focus on extracting actionable product design information that can be used to ge
    * Generate realistic product specifications using OpenAI
    */
   private async generateProductSpecsWithAI(processedInputs: any, preferences: any): Promise<any> {
+    console.log('🎯 AI Prompt Input Data:');
+    console.log('  📋 Requirements:', processedInputs.requirements);
+    console.log('  🔧 Components:', processedInputs.components);
+    console.log('  🎨 Style:', processedInputs.style);
+    console.log('  ✨ Features:', processedInputs.features);
+    console.log('  🏗️ Materials:', processedInputs.materials);
+    console.log('  🎯 Use case:', processedInputs.use_case);
+    console.log('  ⚠️ Constraints:', processedInputs.constraints);
+    
     const prompt = `
 You are an expert product designer and engineer. Create detailed specifications for a physical product based on these requirements:
 
@@ -891,16 +942,28 @@ Focus on creating a realistic, manufacturable product that fulfills the requirem
     
     const productType = this.inferProductType(processedInputs);
     
+    // Add randomization to prevent identical responses
+    const random = Math.random();
+    const timeVariation = Date.now() % 1000;
+    
     // Ensure we have at least some components
     const components = [];
     
-    // Add main body component
+    // Add main body component with some randomization
+    const baseWidth = 10 + (random * 8); // 10-18
+    const baseLength = 15 + (random * 10); // 15-25  
+    const baseHeight = 4 + (random * 4); // 4-8
+    
     components.push({
       name: "main_body",
-      dimensions: { width: 12, length: 18, height: 6 },
-      material: processedInputs.materials?.[0] || "Plastic",
+      dimensions: { 
+        width: Math.round(baseWidth * 10) / 10, 
+        length: Math.round(baseLength * 10) / 10, 
+        height: Math.round(baseHeight * 10) / 10 
+      },
+      material: processedInputs.materials?.[0] || this.getRandomMaterial(),
       function: "Primary structure",
-      features: processedInputs.features?.slice(0, 2) || ["functional"],
+      features: processedInputs.features?.slice(0, 2) || this.getRandomFeatures(2),
       connections: []
     });
     
@@ -928,9 +991,16 @@ Focus on creating a realistic, manufacturable product that fulfills the requirem
       });
     }
     
+    // Add variation to names and descriptions
+    const styleVariations = ['sleek', 'innovative', 'premium', 'compact', 'professional'];
+    const descriptiveWords = ['versatile', 'robust', 'efficient', 'elegant', 'practical'];
+    
+    const randomStyle = styleVariations[Math.floor(random * styleVariations.length)];
+    const randomDesc = descriptiveWords[Math.floor(random * descriptiveWords.length)];
+    
     const fallbackSpecs = {
-      name: `${preferences?.style || 'Modern'} ${productType}`,
-      description: `A ${preferences?.style || 'modern'} ${productType} designed for ${processedInputs.use_case || 'general use'}`,
+      name: `${randomStyle} ${productType} v${timeVariation}`,
+      description: `A ${randomDesc} ${productType} designed for ${processedInputs.use_case || 'general use'} with ${preferences?.style || 'modern'} styling`,
       style: preferences?.style || 'modern',
       components: components,
       totalVolume: components.reduce((vol, comp) => 
@@ -959,30 +1029,51 @@ Focus on creating a realistic, manufacturable product that fulfills the requirem
   }
 
   /**
+   * Get random material for fallback generation
+   */
+  private getRandomMaterial(): string {
+    const materials = ['ABS Plastic', 'PLA Plastic', 'Aluminum', 'Stainless Steel', 'Silicone', 'Wood', 'Carbon Fiber', 'TPU'];
+    return materials[Math.floor(Math.random() * materials.length)];
+  }
+
+  /**
+   * Get random features for fallback generation
+   */
+  private getRandomFeatures(count: number): string[] {
+    const features = ['durable', 'lightweight', 'ergonomic', 'waterproof', 'portable', 'eco-friendly', 'modular', 'wireless'];
+    const shuffled = features.sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, count);
+  }
+
+  /**
    * Infer product type from processed inputs
    */
   private inferProductType(processedInputs: any): string {
     const useCase = processedInputs.use_case?.toLowerCase() || '';
     const requirements = (processedInputs.requirements || []).join(' ').toLowerCase();
     const features = (processedInputs.features || []).join(' ').toLowerCase();
+    const components = (processedInputs.components || []).join(' ').toLowerCase();
     
-    if (useCase.includes('kitchen') || requirements.includes('cook') || features.includes('food')) {
-      return 'Kitchen Tool';
+    if (useCase.includes('kitchen') || requirements.includes('utensil') || features.includes('kitchen') || components.includes('holder_body')) {
+      return 'Kitchen Utensil Holder';
     }
     if (useCase.includes('office') || requirements.includes('work') || features.includes('desk')) {
-      return 'Office Accessory';
+      return 'Office Organizer';
+    }
+    if (useCase.includes('tool') || requirements.includes('workshop') || features.includes('garage')) {
+      return 'Tool Organizer';
     }
     if (useCase.includes('home') || requirements.includes('household')) {
-      return 'Home Product';
+      return 'Home Storage';
     }
     if (useCase.includes('tech') || requirements.includes('electronic') || features.includes('digital')) {
-      return 'Tech Device';
+      return 'Tech Accessory';
     }
     if (features.includes('portable') || features.includes('carry')) {
-      return 'Portable Device';
+      return 'Portable Organizer';
     }
     
-    return 'Custom Product';
+    return 'Custom Organizer';
   }
 
   /**

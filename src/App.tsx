@@ -107,7 +107,7 @@ function App() {
 
   const handleAuthSuccess = async () => {
     // console.log('✅ App: Auth success callback triggered, authRequested:', authRequested);
-    
+      
     // Ensure modal is closed
     setAuthModal({ isOpen: false, mode: 'signin' });
     
@@ -131,8 +131,8 @@ function App() {
 
   const handleBackToLanding = () => {
     setIsNavigating(true);
-    setCurrentView('landing');
-    
+      setCurrentView('landing');
+      
     // Clear URL parameters
     const url = new URL(window.location.href);
     url.searchParams.delete('success');
@@ -207,7 +207,7 @@ function App() {
     if (showUsageDropdown) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
-    }
+  }
   }, [showUsageDropdown]);
 
   return (
@@ -259,15 +259,15 @@ function App() {
                     <span className="text-xs text-yellow-400 font-medium">Pro</span>
                   </button>
                 ) : (
-                  <button
+                <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setSubscriptionModal(true);
                     }}
-                    className="text-xs bg-gradient-to-r from-cyan-500 to-purple-500 text-white px-3 py-1 rounded-full hover:from-cyan-600 hover:to-purple-600 transition-all duration-300"
-                  >
-                    Upgrade
-                  </button>
+                  className="text-xs bg-gradient-to-r from-cyan-500 to-purple-500 text-white px-3 py-1 rounded-full hover:from-cyan-600 hover:to-purple-600 transition-all duration-300"
+                >
+                  Upgrade
+                </button>
                 )}
                 <button
                   onClick={(e) => {

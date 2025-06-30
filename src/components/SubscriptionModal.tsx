@@ -254,14 +254,14 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             </>
           ) : (
             <>
-              <h2 className="text-3xl font-bold text-white mb-2">Choose Your Plan</h2>
-              <p className="text-gray-400">
-                Unlock more designs and refinements to bring your ideas to life
-              </p>
-              {profile && (
-                <p className="text-cyan-400 text-sm mt-2">
-                  Current plan: {profile.subscription_tier.charAt(0).toUpperCase() + profile.subscription_tier.slice(1)}
-                </p>
+          <h2 className="text-3xl font-bold text-white mb-2">Choose Your Plan</h2>
+          <p className="text-gray-400">
+            Unlock more designs and refinements to bring your ideas to life
+          </p>
+          {profile && (
+            <p className="text-cyan-400 text-sm mt-2">
+              Current plan: {profile.subscription_tier.charAt(0).toUpperCase() + profile.subscription_tier.slice(1)}
+            </p>
               )}
             </>
           )}
@@ -312,7 +312,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               <div className="text-center mb-6">
                 <div className={`w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center ${
                   plan.name.includes('Pro') 
-                    ? 'bg-gradient-to-r from-yellow-400 to-orange-400'
+                    ? 'bg-gradient-to-r from-yellow-400 to-orange-400' 
                     : plan.name.includes('Plus')
                     ? 'bg-gradient-to-r from-green-400 to-emerald-400' 
                     : 'bg-gradient-to-r from-cyan-400 to-purple-400'

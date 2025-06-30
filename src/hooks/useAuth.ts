@@ -360,11 +360,11 @@ export function useAuth() {
 
       console.log(`🔗 [${hookId}] Setting up global auth state listener (primary hook)`)
       try {
-        const {
+    const {
           data: { subscription: authSubscription },
         } = supabase.auth.onAuthStateChange(async (event: any, session: Session | null) => {
           console.log(`🔔 [${hookId}] Auth state changed:`, event, session?.user?.email || 'No session')
-          
+      
           // Broadcast to all auth hook instances
           window.dispatchEvent(new CustomEvent('authStateChange', { 
             detail: { event, session, hookId }
@@ -386,7 +386,7 @@ export function useAuth() {
                 // Clear all state
                 setSession(null)
                 setUser(null)
-                setProfile(null)
+            setProfile(null)
                 setLoading(false)
                 
                 console.log(`✅ [${hookId}] User data cleared successfully`)
@@ -410,7 +410,7 @@ export function useAuth() {
                   await fetchProfile(session.user.id)
                   setupProfileSubscription(session.user.id)
                 }
-                setLoading(false)
+              setLoading(false)
             }
           }
         })
@@ -420,8 +420,8 @@ export function useAuth() {
         console.log(`✅ [${hookId}] Global auth listener set up successfully`)
       } catch (error) {
         console.error('❌ Error setting up auth listener:', error)
+        }
       }
-    }
 
     // Set up auth listener first, then initialize
     setupAuthListener()
