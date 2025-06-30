@@ -649,6 +649,7 @@ const ProcessWizard: React.FC<ProcessWizardProps> = ({ onBack }) => {
         return <DesignIterationStep model={architecturalModel} onModelUpdate={handleModelUpdate} />;
       case 'manufacture':
         return <ManufacturingConnect 
+          model={architecturalModel}
           onNext={handleNext}
           onPrevious={handlePrevious}
           canGoNext={true}
@@ -656,6 +657,7 @@ const ProcessWizard: React.FC<ProcessWizardProps> = ({ onBack }) => {
         />;
       case 'patent':
         return <PatentSearch 
+          model={architecturalModel}
           onNext={handleNext}
           onPrevious={handlePrevious}
           canGoNext={true}

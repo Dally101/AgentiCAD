@@ -1,57 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, FileText, ExternalLink, Shield, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArchitecturalModel } from '../../types/architectural';
 
 interface PatentSearchProps {
+  model: ArchitecturalModel | null;
   onNext: () => void;
   onPrevious: () => void;
   canGoNext: boolean;
   canGoPrevious: boolean;
 }
 
-const PatentSearch: React.FC<PatentSearchProps> = ({ onNext }) => {
-  const [searchQuery, setSearchQuery] = useState('foldable chair with cup holder');
+const PatentSearch: React.FC<PatentSearchProps> = ({ model, onNext }) => {
+  const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const mockResults = [
-    {
-      id: 1,
-      title: "Portable Folding Chair with Integrated Beverage Holder",
-      patentNumber: "US10,123,456",
-      inventor: "John Smith",
-      assignee: "Outdoor Furniture Inc.",
-      filingDate: "2019-03-15",
-      publicationDate: "2020-09-22",
-      status: "Active",
-      similarity: 85,
-      abstract: "A portable folding chair comprising a frame assembly and a beverage holder integrated into the armrest structure..."
-    },
-    {
-      id: 2,
-      title: "Collapsible Seating Device with Attached Cup Support",
-      patentNumber: "US9,987,654",
-      inventor: "Sarah Johnson",
-      assignee: "Camping Solutions LLC",
-      filingDate: "2018-11-08",
-      publicationDate: "2020-05-14",
-      status: "Active",
-      similarity: 72,
-      abstract: "A collapsible chair design featuring a detachable cup holder mechanism that can be positioned on either side..."
-    },
-    {
-      id: 3,
-      title: "Foldable Chair with Multiple Accessory Attachments",
-      patentNumber: "US10,567,890",
-      inventor: "Mike Chen",
-      assignee: "Innovation Furniture Co.",
-      filingDate: "2020-01-20",
-      publicationDate: "2021-07-30",
-      status: "Pending",
-      similarity: 68,
-      abstract: "A modular folding chair system allowing for various accessory attachments including beverage holders, phone mounts..."
+  // Set initial search query based on the actual product data
+  useEffect(() => {
+    if (model?.productSpecs) {
+      const productName = model.productSpecs.name || model.name;
+      const description = model.productSpecs.description || '';
+      
+      // Create search query from product name and key features
+      const components = model.productSpecs.components || [];
+      const keyComponents = components.slice(0, 2).map(c => c.name).join(' ');
+      const searchTerms = `${productName} ${keyComponents}`.trim();
+      
+      setSearchQuery(searchTerms);
+    } else if (model?.name) {
+      setSearchQuery(model.name);
     }
-  ];
+  }, [model]);
+
+  // Generate realistic patent results based on the actual product
+  const generateMockResults = () => {
+    if (!model?.productSpecs) return [];
+    
+    const productName = model.productSpecs.name || model.name;
+    const components = model.productSpecs.components || [];
+    const materials = model.productSpecs.manufacturing?.materials || [];
+    
+    // Generate similar patent titles based on the actual product
+    const baseWords = productName.toLowerCase().split(' ').filter(word => word.length > 2);
+    const componentWords = components.map(c => c.name.toLowerCase().replace('_', ' '));
+    
+    return [
+      {
+        id: 1,
+        title: `Enhanced ${productName} with Improved Design`,
+        patentNumber: `US${Math.floor(Math.random() * 1000000 + 10000000)}`,
+        inventor: "Alex Chen",
+        assignee: "TechDesign Solutions Inc.",
+        filingDate: "2021-03-15",
+        publicationDate: "2022-09-22",
+        status: "Active",
+        similarity: Math.floor(Math.random() * 20 + 75), // 75-95%
+        abstract: `An improved ${productName.toLowerCase()} featuring enhanced ${componentWords[0] || 'components'} and optimized ${materials[0] || 'material'} construction for better performance...`
+      },
+      {
+        id: 2,
+        title: `Modular ${baseWords[0] || 'Device'} System with Multiple Functions`,
+        patentNumber: `US${Math.floor(Math.random() * 1000000 + 9000000)}`,
+        inventor: "Sarah Rodriguez",
+        assignee: "Innovation Labs LLC",
+        filingDate: "2020-11-08",
+        publicationDate: "2022-05-14",
+        status: "Active",
+        similarity: Math.floor(Math.random() * 15 + 60), // 60-75%
+        abstract: `A modular system incorporating ${componentWords[1] || 'functional elements'} with interchangeable components designed for ${model.productSpecs.specifications?.durability || 'reliable'} operation...`
+      },
+      {
+        id: 3,
+        title: `Compact ${baseWords[1] || productName} with Integrated Features`,
+        patentNumber: `US${Math.floor(Math.random() * 1000000 + 10500000)}`,
+        inventor: "Michael Kim",
+        assignee: "Smart Products Co.",
+        filingDate: "2022-01-20",
+        publicationDate: "2023-07-30",
+        status: "Pending",
+        similarity: Math.floor(Math.random() * 15 + 50), // 50-65%
+        abstract: `A compact design featuring ${componentWords[2] || 'advanced components'} and utilizing ${materials[1] || 'modern materials'} for enhanced ${model.productSpecs.manufacturing?.complexity || 'functionality'}...`
+      }
+    ];
+  };
+
+  const mockResults = generateMockResults();
 
   const handleSearch = async () => {
     setIsSearching(true);
@@ -81,7 +115,7 @@ const PatentSearch: React.FC<PatentSearchProps> = ({ onNext }) => {
         </div>
         
         <p className="text-gray-300 text-lg mb-6 leading-relaxed">
-          Ensure your foldable chair design is unique and doesn't infringe on existing patents. 
+          Ensure your {model?.productSpecs?.name || model?.name || 'product'} design is unique and doesn't infringe on existing patents. 
           Our AI-powered search analyzes your design against millions of patents worldwide.
         </p>
 

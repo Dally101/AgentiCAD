@@ -1,59 +1,93 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Star, Clock, DollarSign, Send, Filter } from 'lucide-react';
+import { ArchitecturalModel } from '../../types/architectural';
 
 interface ManufacturingConnectProps {
+  model: ArchitecturalModel | null;
   onNext: () => void;
   onPrevious: () => void;
   canGoNext: boolean;
   canGoPrevious: boolean;
 }
 
-const ManufacturingConnect: React.FC<ManufacturingConnectProps> = ({ onNext }) => {
+const ManufacturingConnect: React.FC<ManufacturingConnectProps> = ({ model, onNext }) => {
   const [selectedLocation, setSelectedLocation] = useState('all');
   const [selectedMaterial, setSelectedMaterial] = useState('all');
   const [selectedManufacturer, setSelectedManufacturer] = useState<number | null>(null);
+  const [manufacturers, setManufacturers] = useState<any[]>([]);
 
-  const manufacturers = [
-    {
-      id: 1,
-      name: "TechForge Manufacturing",
-      location: "San Francisco, CA",
-      rating: 4.8,
-      reviews: 127,
-      specialties: ["Aluminum", "Steel", "Precision Machining"],
-      minOrder: 50,
-      leadTime: "2-3 weeks",
-      priceRange: "$85 - $120",
-      certifications: ["ISO 9001", "AS9100"],
-      image: "https://images.pexels.com/photos/1267338/pexels-photo-1267338.jpeg?auto=compress&cs=tinysrgb&w=400"
-    },
-    {
-      id: 2,
-      name: "Precision Parts Pro",
-      location: "Austin, TX",
-      rating: 4.6,
-      reviews: 89,
-      specialties: ["Carbon Fiber", "Composites", "3D Printing"],
-      minOrder: 25,
-      leadTime: "1-2 weeks",
-      priceRange: "$95 - $140",
-      certifications: ["ISO 14001", "IATF 16949"],
-      image: "https://images.pexels.com/photos/1267360/pexels-photo-1267360.jpeg?auto=compress&cs=tinysrgb&w=400"
-    },
-    {
-      id: 3,
-      name: "Global Prototype Solutions",
-      location: "Shenzhen, China",
-      rating: 4.9,
-      reviews: 245,
-      specialties: ["Mass Production", "Injection Molding", "Assembly"],
-      minOrder: 100,
-      leadTime: "3-4 weeks",
-      priceRange: "$65 - $95",
-      certifications: ["ISO 9001", "FDA"],
-      image: "https://images.pexels.com/photos/1267364/pexels-photo-1267364.jpeg?auto=compress&cs=tinysrgb&w=400"
+  // Generate manufacturers based on the actual product specifications
+  useEffect(() => {
+    if (model?.productSpecs) {
+      const productSpecs = model.productSpecs;
+      const materials = productSpecs.manufacturing?.materials || ['plastic'];
+      const method = productSpecs.manufacturing?.method || 'injection molding';
+      const complexity = productSpecs.manufacturing?.complexity || 'moderate';
+      const estimatedCost = productSpecs.manufacturing?.estimated_cost || '$50-100';
+      
+      // Generate realistic manufacturers based on product requirements
+      const generatedManufacturers = [
+        {
+          id: 1,
+          name: "PrecisionTech Manufacturing",
+          location: "San Francisco, CA",
+          rating: 4.8,
+          reviews: 127,
+          specialties: materials.slice(0, 3),
+          minOrder: complexity === 'simple' ? 25 : complexity === 'complex' ? 100 : 50,
+          leadTime: method.includes('3D printing') ? "1-2 weeks" : method.includes('injection molding') ? "3-4 weeks" : "2-3 weeks",
+          priceRange: estimatedCost,
+          certifications: ["ISO 9001", "AS9100"],
+          image: "https://images.pexels.com/photos/1267338/pexels-photo-1267338.jpeg?auto=compress&cs=tinysrgb&w=400"
+        },
+        {
+          id: 2,
+          name: "Advanced Prototype Solutions",
+          location: "Austin, TX", 
+          rating: 4.6,
+          reviews: 89,
+          specialties: [method, ...materials.slice(0, 2)],
+          minOrder: Math.max(25, Math.floor(Math.random() * 50 + 25)),
+          leadTime: complexity === 'simple' ? "1-2 weeks" : "2-4 weeks",
+          priceRange: estimatedCost,
+          certifications: ["ISO 14001", "IATF 16949"],
+          image: "https://images.pexels.com/photos/1267360/pexels-photo-1267360.jpeg?auto=compress&cs=tinysrgb&w=400"
+        },
+        {
+          id: 3,
+          name: "Global Production Partners",
+          location: "Shenzhen, China",
+          rating: 4.9,
+          reviews: 245,
+          specialties: ["Mass Production", method, materials[0] || 'plastic'],
+          minOrder: complexity === 'simple' ? 50 : 100,
+          leadTime: "3-5 weeks",
+          priceRange: estimatedCost.replace(/\$(\d+)-(\d+)/, (_, min, max) => `$${Math.floor(+min * 0.7)}-${Math.floor(+max * 0.8)}`),
+          certifications: ["ISO 9001", "FDA"],
+          image: "https://images.pexels.com/photos/1267364/pexels-photo-1267364.jpeg?auto=compress&cs=tinysrgb&w=400"
+        }
+      ];
+      
+      setManufacturers(generatedManufacturers);
+    } else {
+      // Fallback manufacturers if no product specs
+      setManufacturers([
+        {
+          id: 1,
+          name: "General Manufacturing Co.",
+          location: "Various Locations",
+          rating: 4.5,
+          reviews: 50,
+          specialties: ["General Production"],
+          minOrder: 50,
+          leadTime: "2-3 weeks",
+          priceRange: "$50-100",
+          certifications: ["ISO 9001"],
+          image: "https://images.pexels.com/photos/1267338/pexels-photo-1267338.jpeg?auto=compress&cs=tinysrgb&w=400"
+        }
+      ]);
     }
-  ];
+  }, [model]);
 
   const handleRequestQuote = (manufacturerId: number) => {
     setSelectedManufacturer(manufacturerId);
