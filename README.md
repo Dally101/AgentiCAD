@@ -5,6 +5,7 @@
 ![AgentiCAD Banner](./public/image.png)
 
 [![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-idea2prototype.netlify.app-00D9FF?style=for-the-badge)](https://idea2prototype.netlify.app/)
+[![Built with Bolt](https://img.shields.io/badge/⚡_Built_with-Bolt.new-000000?style=for-the-badge&logo=lightning)](https://bolt.new/?rid=os72mi)
 [![GitHub Stars](https://img.shields.io/github/stars/Dally101/AgentiCAD?style=for-the-badge&logo=github)](https://github.com/Dally101/AgentiCAD)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](./LICENSE)
 
