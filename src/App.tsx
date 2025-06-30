@@ -8,6 +8,7 @@ import SuccessPage from './components/SuccessPage';
 import CancelPage from './components/CancelPage';
 import UsageIndicator from './components/UsageIndicator';
 import ProtectedRoute from './components/ProtectedRoute';
+import BoltBadge from './components/BoltBadge';
 import { useAuth } from './hooks/useAuth';
 import { getProductByTier } from './stripe-config';
 
@@ -370,6 +371,9 @@ function App() {
         profile={profile}
         ensureFreshAuth={ensureFreshAuth}
       />
+
+      {/* Bolt Badge - Appears on all pages */}
+      <BoltBadge />
     </div>
   );
 }

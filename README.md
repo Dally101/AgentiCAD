@@ -2,7 +2,7 @@
 
 *Transform your ideas into manufacturable products with the power of AI*
 
-![AgentiCAD Banner](./public/image.png)
+![AgentiCAD Banner](./public/agenticad-banner.png)
 
 [![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-idea2prototype.netlify.app-00D9FF?style=for-the-badge)](https://idea2prototype.netlify.app/)
 [![Built with Bolt](https://img.shields.io/badge/⚡_Built_with-Bolt.new-000000?style=for-the-badge&logo=lightning)](https://bolt.new/?rid=os72mi)
