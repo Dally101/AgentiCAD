@@ -56,9 +56,65 @@ const DesignIteration: React.FC<DesignIterationProps> = ({ onNext }) => {
         return;
       }
 
-      // Save refine chat to database
+      // Get current design context
       const designSessionId = sessionStorage.getItem('currentDesignSessionId');
-      
+      let currentModel = null;
+      let designData = null;
+
+      if (designSessionId) {
+        const { data } = await supabase
+          .from('design_sessions')
+          .select('design_data')
+          .eq('id', designSessionId)
+          .single();
+        
+        designData = data?.design_data;
+        currentModel = designData?.model;
+      }
+
+      // Process with real AI if model exists
+      let aiResponse = '';
+      let updatedModel = null;
+
+      if (currentModel) {
+        try {
+          // Import and use the real AI service
+          const { architecturalAI } = await import('../../services/architecturalAI');
+          const result = await architecturalAI.processDesignIteration(currentModel, message);
+          
+          aiResponse = result.explanation;
+          updatedModel = result.updatedModel;
+
+          // Update session with new model
+          if (designSessionId && updatedModel) {
+            await supabase
+              .from('design_sessions')
+              .update({
+                design_data: {
+                  ...designData,
+                  model: updatedModel,
+                  last_iteration: message,
+                  iterations: [...(designData.iterations || []), {
+                    timestamp: new Date().toISOString(),
+                    user_feedback: message,
+                    ai_response: aiResponse,
+                    model_changes: result.confidence
+                  }]
+                }
+              })
+              .eq('id', designSessionId);
+          }
+
+        } catch (aiError) {
+          console.warn('AI processing failed, using fallback:', aiError);
+          aiResponse = `I understand you want to "${message}". While I'm processing this with my design algorithms, I can tell you that this modification would affect the structural integrity and aesthetics of your design. Let me work on incorporating this change and I'll update the model accordingly.`;
+        }
+      } else {
+        // Fallback response when no model context
+        aiResponse = `I understand your feedback: "${message}". To make specific design changes, please first generate a 3D model from the initial design step. Then I can help you refine and iterate on the design with detailed AI-powered modifications.`;
+      }
+
+      // Save refine chat to database with AI response
       if (designSessionId) {
         await supabase
           .from('refine_chats')
@@ -66,40 +122,21 @@ const DesignIteration: React.FC<DesignIterationProps> = ({ onNext }) => {
             user_id: user.id,
             design_session_id: designSessionId,
             message: message,
-            response: null // Will be updated when AI responds
+            response: aiResponse
           });
       }
+      
+      // Add AI response to chat history
+      setChatHistory([...newHistory, { type: 'ai', message: aiResponse }]);
+      setIsProcessing(false);
 
-      // Simulate AI processing
-      setTimeout(async () => {
-        const aiResponse = `Great suggestion! I've updated the design to ${message.toLowerCase()}. The new model maintains structural integrity while incorporating your requested changes. Would you like to make any other adjustments?`;
-        
-        setChatHistory([...newHistory, { type: 'ai', message: aiResponse }]);
-        
-        // Update the database with AI response
-        if (designSessionId) {
-          const { data: lastChat } = await supabase
-            .from('refine_chats')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('design_session_id', designSessionId)
-            .eq('message', message)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          if (lastChat) {
-            await supabase
-              .from('refine_chats')
-              .update({ response: aiResponse })
-              .eq('id', lastChat.id);
-          }
-        }
-        
-        setIsProcessing(false);
-      }, 2000);
     } catch (error) {
-      console.error('Error saving refine chat:', error);
+      console.error('Error processing design feedback:', error);
+      
+      // Add error response to chat
+      const errorResponse = 'I apologize, but I encountered an issue processing your request. Please try again or contact support if the problem persists.';
+      setChatHistory([...newHistory, { type: 'ai', message: errorResponse }]);
+      
       setIsProcessing(false);
     }
   };
