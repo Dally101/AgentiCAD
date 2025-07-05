@@ -60,6 +60,7 @@ export interface ArchitecturalModel {
   style: string;
   created: Date;
   modified: Date;
+  type?: 'product' | 'architectural' | 'cad';
   // Product-specific fields (optional for backward compatibility)
   productSpecs?: {
     name: string;
@@ -82,6 +83,63 @@ export interface ArchitecturalModel {
   };
   manufacturing?: any;
   specifications?: any;
+  // CAD-specific fields
+  cadModel?: CADModelData;
+}
+
+// CAD-specific interfaces
+export interface CADModelData {
+  id: string;
+  prompt: string;
+  gltfUrl: string;
+  thumbnailUrl?: string;
+  formats: Record<string, string>;
+  properties: {
+    dimensions: {
+      width: number;
+      height: number;
+      depth: number;
+    };
+    volume: number;
+    surfaceArea: number;
+    complexity: 'simple' | 'moderate' | 'complex';
+  };
+  manufacturingCost?: {
+    material: string;
+    volume: number;
+    cost: number;
+    currency: string;
+  };
+  exportOptions?: CADExportOptions;
+}
+
+export interface CADExportOptions {
+  format: 'stl' | 'obj' | 'ply' | 'step' | 'fbx' | 'gltf';
+  units: 'mm' | 'cm' | 'm' | 'in' | 'ft';
+  quality: 'low' | 'medium' | 'high';
+  scale?: number;
+  // NEW FIX: Add viewer scale option
+  useViewerScale?: boolean;
+}
+
+export interface CADGenerationRequest {
+  prompt: string;
+  outputFormat?: 'gltf' | 'stl' | 'obj' | 'ply' | 'step' | 'fbx';
+  units?: 'mm' | 'cm' | 'm' | 'in' | 'ft';
+  scale?: number;
+}
+
+export interface CADGenerationResponse {
+  id: string;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
+  prompt: string;
+  outputs?: {
+    gltf?: string;
+    thumbnail?: string;
+  };
+  error?: string;
+  created_at: string;
+  completed_at?: string;
 }
 
 // Input modality types

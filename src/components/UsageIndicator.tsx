@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { memo } from 'react'
 import { BarChart3, MessageCircle, Eye } from 'lucide-react'
 import { useUsage } from '../hooks/useUsage'
 import { useAuth } from '../hooks/useAuth'
@@ -11,6 +11,14 @@ interface UsageIndicatorProps {
 const UsageIndicator: React.FC<UsageIndicatorProps> = ({ onUpgradeClick }) => {
   const { usage, loading, getUsageLimits } = useUsage()
   const { profile } = useAuth()
+  
+  // Debug the re-render issue
+  console.log('📊 UsageIndicator render:', { 
+    hasUsage: !!usage, 
+    hasProfile: !!profile, 
+    loading,
+    usageId: usage?.id
+  })
 
   // Debug logging - can be removed once everything works perfectly
   // console.log('📊 UsageIndicator render:', { 
@@ -153,4 +161,4 @@ const UsageIndicator: React.FC<UsageIndicatorProps> = ({ onUpgradeClick }) => {
   )
 }
 
-export default UsageIndicator
+export default memo(UsageIndicator)

@@ -87,7 +87,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </span>
             </button>
-            <button className="px-8 py-4 border border-white/20 text-white font-semibold rounded-xl hover:bg-white/10 transition-all duration-300 backdrop-blur-sm">
+            <button 
+              onClick={() => window.open('https://youtu.be/sNqq_phxmZs', '_blank')}
+              className="px-8 py-4 border border-white/20 text-white font-semibold rounded-xl hover:bg-white/10 transition-all duration-300 backdrop-blur-sm"
+            >
               Watch Demo
             </button>
           </div>

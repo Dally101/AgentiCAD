@@ -289,9 +289,13 @@ class CacheService {
 
       if (error) {
         // If table doesn't exist, log once and continue silently
-        if (error.message && error.message.includes('relation "cache_entries" does not exist')) {
+        if (error.message && (
+          error.message.includes('relation "cache_entries" does not exist') ||
+          error.message.includes('404') ||
+          error.message.includes('Not Found')
+        )) {
           if (!this.hasLoggedTableMissing) {
-            console.info('Cache table not found - running in browser-only mode. This is fine for development.');
+            console.info('💾 Cache table not found - running in browser-only mode. This is fine for development.');
             this.hasLoggedTableMissing = true;
           }
           return;
@@ -299,6 +303,19 @@ class CacheService {
         throw error;
       }
     } catch (error) {
+      // Handle network errors and other issues gracefully
+      if (error instanceof Error && (
+        error.message.includes('fetch') ||
+        error.message.includes('404') ||
+        error.message.includes('Network') ||
+        error.message.includes('Failed to fetch')
+      )) {
+        if (!this.hasLoggedTableMissing) {
+          console.info('💾 Cloud cache not available - using browser cache only.');
+          this.hasLoggedTableMissing = true;
+        }
+        return;
+      }
       console.warn('Cloud cache sync failed:', error);
     }
   }
@@ -316,8 +333,13 @@ class CacheService {
         .single();
 
       if (error) {
-        // If table doesn't exist, fail silently
-        if (error.message.includes('relation "cache_entries" does not exist')) {
+        // If table doesn't exist or any other common errors, fail silently
+        if (error.message && (
+          error.message.includes('relation "cache_entries" does not exist') ||
+          error.message.includes('404') ||
+          error.message.includes('Not Found') ||
+          error.message.includes('No rows found')
+        )) {
           return null;
         }
         return null;
@@ -336,6 +358,15 @@ class CacheService {
         user_id: data.user_id
       };
     } catch (error) {
+      // Handle fetch errors gracefully
+      if (error instanceof Error && (
+        error.message.includes('fetch') ||
+        error.message.includes('404') ||
+        error.message.includes('Network') ||
+        error.message.includes('Failed to fetch')
+      )) {
+        return null; // Fail silently for network issues
+      }
       console.warn('Cloud cache retrieval failed:', error);
       return null;
     }

@@ -15,545 +15,386 @@ export interface UserProfile {
   updated_at: string | null
 }
 
-// Global auth state to prevent multiple initializations
-let globalAuthInitialized = false;
-let globalAuthSubscription: any = null;
-
 export function useAuth() {
-  const hookId = React.useRef(Math.random().toString(36).substr(2, 9)).current
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
   
-  // Refs to track state and prevent multiple operations
   const mountedRef = useRef(true)
   const profileFetchingRef = useRef(false)
-  const initializingRef = useRef(false)
-  const profileSubscriptionRef = useRef<any>(null)
+  const lastUserId = useRef<string | null>(null)
+  const lastAuthEvent = useRef<string | null>(null)
   const authSubscriptionRef = useRef<any>(null)
-  const initializeCalledRef = useRef(false)
-  const userRef = useRef<User | null>(null)
-  const globalEventHandlerRef = useRef<any>(null)
 
-  // Keep user ref in sync
-  useEffect(() => {
-    userRef.current = user
-  }, [user])
-
-  // Get fresh session token - critical for checkout requests
-  const getFreshSession = useCallback(async () => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (error) {
-        console.error('Error getting fresh session:', error)
-        return null
-      }
-      return session
-    } catch (error) {
-      console.error('Error in getFreshSession:', error)
-      return null
-    }
-  }, [])
-
+  // Simple profile fetch - no complex fallbacks
   const fetchProfile = useCallback(async (userId: string) => {
-    if (!mountedRef.current || profileFetchingRef.current) {
-      console.log(`⚠️ [${hookId}] Skipping profile fetch - mounted: ${mountedRef.current}, fetching: ${profileFetchingRef.current}`)
+    // Prevent rapid duplicate fetches for the same user
+    if (profileFetchingRef.current && lastUserId.current === userId) {
+      console.log('🔄 Profile fetch skipped - already fetching same user:', userId)
       return
     }
 
     profileFetchingRef.current = true
+    lastUserId.current = userId
 
     try {
-      console.log(`🔄 [${hookId}] Fetching profile for user:`, userId)
+      console.log('🔄 Fetching profile for user:', userId)
       
-      // Add timeout to catch hanging requests
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
-      })
-
-      const fetchPromise = supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
-
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
-
-      console.log(`🔍 [${hookId}] Profile fetch result:`, { data: !!data, error: error?.message || 'none' })
+      const { data, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle()
 
       if (error && error.code !== 'PGRST116') {
-        console.error(`❌ [${hookId}] Error fetching profile:`, error)
-        if (mountedRef.current) {
-          setProfile(null)
-        }
-        return
+        console.error('❌ Error fetching profile:', error)
+        throw error
       }
 
-      console.log(`✅ [${hookId}] Profile fetched successfully:`, {
-        found: !!data,
-        tier: data?.subscription_tier || 'No profile',
-        status: data?.subscription_status || 'No status',
-        email: data?.email || 'No email',
-        mounted: mountedRef.current
-      })
-      
-      if (mountedRef.current) {
-        console.log(`📝 [${hookId}] Setting profile data in state:`, data)
+      if (data) {
+        console.log('✅ Profile found:', data.email, data.subscription_tier)
         setProfile(data)
-        console.log(`✅ [${hookId}] Profile state updated successfully`)
       } else {
-        console.log(`⚠️ [${hookId}] Component not mounted, skipping profile update`)
+        console.log('📝 No profile found, creating one')
+        await createProfile(userId)
       }
     } catch (error) {
-      console.error(`❌ [${hookId}] Error in fetchProfile:`, error)
-      if (mountedRef.current) {
-        setProfile(null)
-      }
+      console.error('❌ Profile fetch failed:', error)
     } finally {
-      console.log(`🏁 [${hookId}] Profile fetch completed, resetting fetch flag`)
       profileFetchingRef.current = false
     }
-  }, [hookId]) // Add hookId as dependency
+  }, [])
 
-  // Force refresh profile with direct database query
-  const forceRefreshProfile = useCallback(async () => {
-    const currentUser = userRef.current
-    if (!currentUser || !mountedRef.current) return
-
+  // Create profile for new users - simple implementation
+  const createProfile = useCallback(async (userId: string) => {
     try {
-      console.log('Force refreshing profile for user:', currentUser.id)
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser?.email) return
+
+      console.log('📝 Creating profile for:', authUser.email)
+
+      const newProfile = {
+            id: userId,
+        email: authUser.email,
+            subscription_tier: 'free' as const,
+        subscription_status: 'active' as const,
+            stripe_customer_id: null,
+            stripe_subscription_id: null,
+            current_period_start: null,
+            current_period_end: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
       
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('*')
-        .eq('id', currentUser.id)
+        .insert(newProfile)
+        .select()
         .single()
 
       if (error) {
-        console.error('Error force refreshing profile:', error)
+        console.error('❌ Error creating profile:', error)
+        // Set basic profile in state anyway
+        setProfile(newProfile)
         return
       }
 
-      console.log('Force refresh result:', {
-        tier: data.subscription_tier,
-        status: data.subscription_status,
-        updated: data.updated_at
-      })
-
-      if (mountedRef.current) {
+      console.log('✅ Profile created successfully')
         setProfile(data)
-      }
     } catch (error) {
-      console.error('Error in forceRefreshProfile:', error)
-    }
-  }, []) // No dependencies - use userRef instead
-
-  // Setup profile real-time subscription
-  const setupProfileSubscription = useCallback((userId: string) => {
-    // Clean up existing subscription
-    if (profileSubscriptionRef.current) {
-      console.log('Cleaning up existing profile subscription')
-      profileSubscriptionRef.current.unsubscribe()
-      profileSubscriptionRef.current = null
-    }
-
-    console.log('Setting up profile subscription for user:', userId)
-    
-    // Create new subscription with better error handling
-    const subscription = supabase
-      .channel(`profile-changes-${userId}-${Date.now()}`) // Add timestamp to make unique
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'user_profiles',
-          filter: `id=eq.${userId}`
-        },
-        (payload: any) => {
-          console.log('📡 Profile updated via real-time:', payload.new)
-          if (mountedRef.current) {
-            setProfile(payload.new as UserProfile)
+      console.error('❌ Error in createProfile:', error)
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'user_profiles',
-          filter: `id=eq.${userId}`
-        },
-        (payload: any) => {
-          console.log('📡 Profile created via real-time:', payload.new)
-          if (mountedRef.current) {
-            setProfile(payload.new as UserProfile)
-          }
-        }
-      )
-      .subscribe((status: any, err: any) => {
-        console.log('📡 Profile subscription status:', status)
-        if (err) {
-          console.error('📡 Profile subscription error:', err)
-          
-          // Retry subscription setup after error
-          setTimeout(() => {
-            if (mountedRef.current) {
-              console.log('📡 Retrying profile subscription...')
-              setupProfileSubscription(userId)
-            }
-          }, 5000)
-        }
-      })
-
-    profileSubscriptionRef.current = subscription
   }, [])
 
-  // Single useEffect to handle all auth initialization and state changes
+  // Force refresh profile
+  const forceRefreshProfile = useCallback(async () => {
+    if (!user?.id) return
+    
+    // Reset flags to allow fresh fetch
+    profileFetchingRef.current = false
+    lastUserId.current = null
+    await fetchProfile(user.id)
+  }, [user?.id, fetchProfile])
+
+  // Simple auth initialization - run only once
   useEffect(() => {
-    console.log(`🚀 Initializing auth hook [${hookId}]...`)
-    
-    // Prevent multiple auth hooks from running simultaneously
-    if (globalAuthInitialized) {
-      console.log(`⚠️ [${hookId}] Global auth already initialized, syncing current state...`)
-      
-      const syncCurrentSession = async () => {
-        try {
-          const { data: { session } } = await supabase.auth.getSession()
-          console.log(`📡 [${hookId}] Syncing session:`, session?.user?.email || 'No session')
-          
-          if (mountedRef.current) {
-            setSession(session)
-            setUser(session?.user ?? null)
-            
-            if (session?.user) {
-              console.log(`👤 [${hookId}] Syncing profile for existing session...`)
-              await fetchProfile(session.user.id)
-              setupProfileSubscription(session.user.id)
-            }
-            
-            setLoading(false)
-            setInitialized(true)
-          }
-        } catch (error) {
-          console.error(`❌ [${hookId}] Error syncing current session:`, error)
-          if (mountedRef.current) {
-            setLoading(false)
-            setInitialized(true)
-          }
-        }
-      }
-      
-      syncCurrentSession()
-      
-      // Listen for auth state changes from primary hook
-      const handleGlobalAuthChange = async (e: any) => {
-        const { event, session, hookId: sourceHookId } = e.detail
-        
-        // Skip if this is from our own hook
-        if (sourceHookId === hookId) return
-        
-        if (!mountedRef.current) return
-        
-        console.log(`🔄 [${hookId}] Received auth change from [${sourceHookId}]:`, event, session?.user?.email || 'No user')
-        
-        if (event === 'SIGNED_OUT' || !session?.user) {
-          // Clear all user data on sign out
-          console.log(`🚪 [${hookId}] Clearing user data on sign out/no session`)
-          
-          if (profileSubscriptionRef.current) {
-            profileSubscriptionRef.current.unsubscribe()
-            profileSubscriptionRef.current = null
-          }
-          
-          setSession(null)
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-          
-          console.log(`✅ [${hookId}] User data cleared successfully`)
-        } else if (session?.user) {
-          // Update auth state for authenticated users
-          setSession(session)
-          setUser(session.user)
-          
-          console.log(`👤 [${hookId}] Updating state for authenticated user:`, event, 'User ID:', session.user.id)
-          
-          // Handle different auth events
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            console.log(`🔄 [${hookId}] User signed in or token refreshed, fetching profile...`)
-            await fetchProfile(session.user.id)
-            setupProfileSubscription(session.user.id)
-          } else if (event === 'INITIAL_SESSION') {
-            console.log(`⏭️ [${hookId}] Initial session - profile fetch handled during initialization`)
-          } else {
-            console.log(`🔄 [${hookId}] Other auth event, fetching profile...`)
-            await fetchProfile(session.user.id)
-            setupProfileSubscription(session.user.id)
-          }
-          setLoading(false)
-        }
-      }
-
-      globalEventHandlerRef.current = handleGlobalAuthChange
-      window.addEventListener('authStateChange', handleGlobalAuthChange)
-      
-      return
-    }
-    
-    // Mark as globally initialized
-    globalAuthInitialized = true
-    initializingRef.current = true
-    mountedRef.current = true
-
-    const initializeAuth = async () => {
+    const initAuth = async () => {
       try {
-        console.log('Initializing auth...')
+        console.log('🚀 Initializing auth...')
         
-        // Get initial session
+        // Cleanup any existing subscription first
+        if (authSubscriptionRef.current) {
+          console.log('🧹 Cleaning up existing auth subscription')
+          authSubscriptionRef.current.data?.subscription?.unsubscribe()
+          authSubscriptionRef.current = null
+        }
+        
+        // Get current session
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
-          console.error('Error getting session:', error)
+          console.error('❌ Error getting session:', error)
+        } else if (session?.user) {
+          console.log('✅ Found existing session for:', session.user.email)
+          setSession(session)
+          setUser(session.user)
+          lastUserId.current = session.user.id
+          await fetchProfile(session.user.id)
+        } else {
+          console.log('ℹ️ No existing session')
         }
 
-        console.log('Initial session check:', session?.user?.email || 'No session')
-        
-        if (mountedRef.current) {
+        // Set up auth state listener with deduplication
+        authSubscriptionRef.current = supabase.auth.onAuthStateChange(async (event, session) => {
+          const eventKey = `${event}-${session?.user?.id || 'no-user'}`
+          
+          console.log('🔔 Auth state changed:', event, session?.user?.email || 'No user')
+          
+          // Deduplicate rapid-fire events
+          if (lastAuthEvent.current === eventKey) {
+            console.log('🔄 Skipping duplicate auth event:', eventKey)
+      return
+    }
+    
+          lastAuthEvent.current = eventKey
+          console.log('✅ Processing auth state change:', event)
+          
           setSession(session)
           setUser(session?.user ?? null)
           
           if (session?.user) {
+            // Only fetch profile if it's a different user
+            if (lastUserId.current !== session.user.id) {
             await fetchProfile(session.user.id)
-            setupProfileSubscription(session.user.id)
+            }
+          } else {
+            setProfile(null)
+            // Reset tracking when user signs out
+            lastUserId.current = null
+            profileFetchingRef.current = false
+            lastAuthEvent.current = null
           }
+          
+          setLoading(false)
+        })
           
           setLoading(false)
           setInitialized(true)
           console.log('✅ Auth initialization completed')
-        }
       } catch (error) {
-        console.error('Error initializing auth:', error)
-        if (mountedRef.current) {
-          setSession(null)
-          setUser(null)
-          setProfile(null)
+        console.error('❌ Auth initialization failed:', error)
           setLoading(false)
           setInitialized(true)
         }
-      } finally {
-        initializingRef.current = false
-      }
     }
 
-    // Set up auth state listener for this component instance
-    const setupAuthListener = () => {
-      // Only the primary auth hook should set up the global subscription
-      if (globalAuthSubscription) {
-        console.log(`⚠️ [${hookId}] Global auth subscription already exists, reusing...`)
-        authSubscriptionRef.current = globalAuthSubscription
-        return
-      }
+    // Only run once
+    if (!initialized) {
+      initAuth()
+    }
 
-      console.log(`🔗 [${hookId}] Setting up global auth state listener (primary hook)`)
-      try {
-    const {
-          data: { subscription: authSubscription },
-        } = supabase.auth.onAuthStateChange(async (event: any, session: Session | null) => {
-          console.log(`🔔 [${hookId}] Auth state changed:`, event, session?.user?.email || 'No session')
-      
-          // Broadcast to all auth hook instances
-          window.dispatchEvent(new CustomEvent('authStateChange', { 
-            detail: { event, session, hookId }
-          }))
-          
-          // Update local state for primary hook
-          if (mountedRef.current) {
-            console.log(`🔄 [${hookId}] Updating local auth state for event:`, event)
-            
-                          if (event === 'SIGNED_OUT' || !session?.user) {
-                console.log(`🚪 [${hookId}] Clearing user data on sign out/no session`)
-                
-                // Clean up subscriptions
-                if (profileSubscriptionRef.current) {
-                  profileSubscriptionRef.current.unsubscribe()
-                  profileSubscriptionRef.current = null
-                }
-                
-                // Clear all state
-                setSession(null)
-                setUser(null)
-            setProfile(null)
-                setLoading(false)
-                
-                console.log(`✅ [${hookId}] User data cleared successfully`)
-                          } else if (session?.user) {
-                // Update auth state for authenticated users
-                setSession(session)
-                setUser(session.user)
-                
-                console.log(`👤 [${hookId}] Updating state for authenticated user:`, event, 'User ID:', session.user.id)
-                
-                // Handle different auth events
-                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                  console.log(`🔄 [${hookId}] User signed in or token refreshed, fetching profile...`)
-                  await fetchProfile(session.user.id)
-                  setupProfileSubscription(session.user.id)
-                } else if (event === 'INITIAL_SESSION') {
-                  console.log(`⏭️ [${hookId}] Initial session - profile fetch handled during initialization`)
-                } else {
-                  // Handle any other auth events that might need profile sync
-                  console.log(`🔄 [${hookId}] Other auth event, fetching profile...`)
-                  await fetchProfile(session.user.id)
-                  setupProfileSubscription(session.user.id)
-                }
-              setLoading(false)
-            }
-          }
-        })
-
-        authSubscriptionRef.current = authSubscription
-        globalAuthSubscription = authSubscription
-        console.log(`✅ [${hookId}] Global auth listener set up successfully`)
-      } catch (error) {
-        console.error('❌ Error setting up auth listener:', error)
-        }
-      }
-
-    // Set up auth listener first, then initialize
-    setupAuthListener()
-    
-    // Then initialize auth state
-    initializeAuth()
-
-    // Cleanup function
     return () => {
-      console.log(`🧹 [${hookId}] Cleaning up auth hook`)
       mountedRef.current = false
-      
-      if (profileSubscriptionRef.current) {
-        profileSubscriptionRef.current.unsubscribe()
-        profileSubscriptionRef.current = null
+        if (authSubscriptionRef.current) {
+        authSubscriptionRef.current.data?.subscription?.unsubscribe()
+          authSubscriptionRef.current = null
       }
-      
-      if (authSubscriptionRef.current) {
-        authSubscriptionRef.current.unsubscribe()
-        authSubscriptionRef.current = null
-      }
-      
-      // Note: Global event listeners will be cleaned up when page unloads
-      }
-  }, []) // No dependencies - run only once!
-
-  const signUp = async (email: string, password: string) => {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      })
-      
-      if (error) throw error
-
-      return { data, error: null }
-    } catch (error: any) {
-      console.error('Sign up error:', error)
-      return { data: null, error }
     }
-  }
+  }, []) // Empty dependency array - run only once
 
-  const signIn = async (email: string, password: string) => {
+  // Auth methods - simple implementations
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
-      console.log('🔐 Starting sign in process for:', email)
+      setLoading(true)
+      console.log('🔐 Signing in user:', email)
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
       
-      if (error) {
-        console.error('❌ Supabase sign in error:', error)
-        throw error
-      }
-
-      console.log('✅ Sign in successful:', {
-        user: data.user?.email,
-        session: !!data.session
-      })
-
+      if (error) throw error
+      
+      console.log('✅ Sign in successful')
       return { data, error: null }
-    } catch (error: any) {
-      console.error('❌ Sign in error:', error)
-      return { data: null, error }
-    }
-  }
-
-  const signOut = async () => {
-    try {
-      console.log('🚪 Starting sign out process...')
-      
-      // Clean up profile subscription before signing out
-      if (profileSubscriptionRef.current) {
-        console.log('🧹 Cleaning up profile subscription before sign out')
-        profileSubscriptionRef.current.unsubscribe()
-        profileSubscriptionRef.current = null
-      }
-      
-      // Clear local state immediately
-      if (mountedRef.current) {
-        setUser(null)
-        setProfile(null)
-        setSession(null)
-        setLoading(false)
-      }
-      
-      // Sign out from Supabase
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error('❌ Supabase sign out error:', error)
-        throw error
-      }
-      
-      console.log('✅ Sign out completed successfully')
     } catch (error) {
-      console.error('❌ Sign out error:', error)
-      throw error
+      console.error('❌ Sign in failed:', error)
+      return { data: null, error }
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [])
 
-  const refreshProfile = useCallback(async () => {
-    const currentUser = userRef.current
-    if (currentUser) {
-      await fetchProfile(currentUser.id)
+  const signUp = useCallback(async (email: string, password: string) => {
+    try {
+      setLoading(true)
+      console.log('📝 Signing up user:', email)
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      })
+      
+      if (error) throw error
+      
+      console.log('✅ Sign up successful')
+      return { data, error: null }
+    } catch (error) {
+      console.error('❌ Sign up failed:', error)
+      return { data: null, error }
+    } finally {
+      setLoading(false)
     }
-  }, [fetchProfile]) // Only depend on fetchProfile which is stable
+  }, [])
 
-  // Add method to ensure fresh authentication for critical operations
-  const ensureFreshAuth = useCallback(async () => {
-    const currentUser = userRef.current
-    if (!currentUser) return null
-    
-    const freshSession = await getFreshSession()
-    if (!freshSession) {
-      throw new Error('Unable to get fresh authentication session')
+  const signOut = useCallback(async () => {
+    try {
+      setLoading(true)
+      console.log('🚪 Signing out...')
+      
+      // Clear local state first
+      setSession(null)
+      setUser(null)
+      setProfile(null)
+      lastUserId.current = null
+      profileFetchingRef.current = false
+      lastAuthEvent.current = null
+      
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) throw error
+      
+      console.log('✅ Sign out successful')
+      return { error: null }
+    } catch (error) {
+      console.error('❌ Sign out failed:', error)
+      return { error }
+    } finally {
+      setLoading(false)
     }
-    
-    return freshSession
-  }, [getFreshSession]) // Only depend on getFreshSession which is stable
+  }, [])
+
+  const signInWithGoogle = useCallback(async () => {
+    try {
+      setLoading(true)
+      console.log('🔐 Starting Google OAuth...')
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
+        }
+      })
+      
+      if (error) throw error
+      
+      console.log('✅ Google OAuth initiated')
+      return { data, error: null }
+    } catch (error) {
+      console.error('❌ Google OAuth failed:', error)
+      return { data: null, error }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const signInWithApple = useCallback(async () => {
+    try {
+      setLoading(true)
+      console.log('🔐 Starting Apple OAuth...')
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: {
+          redirectTo: window.location.origin,
+        }
+      })
+      
+      if (error) throw error
+      
+      console.log('✅ Apple OAuth initiated')
+      return { data, error: null }
+    } catch (error) {
+      console.error('❌ Apple OAuth failed:', error)
+      return { data: null, error }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const signInWithMicrosoft = useCallback(async () => {
+    try {
+      setLoading(true)
+      console.log('🔐 Starting Microsoft OAuth...')
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+          redirectTo: window.location.origin,
+          scopes: 'email',
+        }
+      })
+      
+      if (error) throw error
+      
+      console.log('✅ Microsoft OAuth initiated')
+      return { data, error: null }
+    } catch (error) {
+      console.error('❌ Microsoft OAuth failed:', error)
+      return { data: null, error }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const getFreshSession = useCallback(async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      if (error) throw error
+      return session
+    } catch (error) {
+      console.error('❌ Error getting fresh session:', error)
+      return null
+    }
+  }, [])
+
+  const resetPassword = useCallback(async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (error) throw error
+      return { error: null }
+    } catch (error) {
+      console.error('❌ Error resetting password:', error)
+      return { error }
+    }
+  }, [])
 
   return {
     user,
     profile,
     session,
     loading,
-    signUp,
+    initialized,
     signIn,
+    signUp,
     signOut,
-    refreshProfile,
+    signInWithGoogle,
+    signInWithApple,
+    signInWithMicrosoft,
+    resetPassword,
+    getFreshSession,
     forceRefreshProfile,
-    ensureFreshAuth,
-    getFreshSession
+    refreshProfile: forceRefreshProfile,
+    ensureFreshAuth: getFreshSession,
+    isReady: initialized && !loading,
+    isAuthenticated: !!user,
   }
 }

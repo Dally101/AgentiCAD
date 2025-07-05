@@ -19,6 +19,7 @@ export function useUsage() {
   const { user, profile } = useAuth()
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [hasInitialized, setHasInitialized] = useState(false)
 
   const getUsageLimits = (tier: string): UsageLimits => {
     switch (tier) {
@@ -32,44 +33,83 @@ export function useUsage() {
   }
 
   useEffect(() => {
-    if (user && profile) {
+    // Only fetch ONCE when we have both user AND profile AND haven't initialized yet
+    if (user && profile && !hasInitialized) {
+      console.log('📊 UseUsage: Fetching usage for first time')
+      setHasInitialized(true)
       fetchCurrentUsage()
-    } else {
+    } else if (!user || !profile) {
+      // Clear usage when no user/profile but don't reset hasInitialized
+      setUsage(null)
       setLoading(false)
+    } else if (user && profile && hasInitialized && !loading) {
+      // We have data and have already initialized, so we're good
+      console.log('📊 UseUsage: Already initialized, no fetch needed')
     }
-  }, [user, profile])
+  }, [user?.id, profile?.id, hasInitialized]) // Removed usage and loading from dependencies
 
   const fetchCurrentUsage = async () => {
-    if (!user) return
+    if (!user) {
+      console.log('📊 UseUsage: No user, skipping fetch')
+      setLoading(false)
+      return
+    }
 
     try {
+      console.log('📊 UseUsage: Starting usage fetch for user:', user.id)
       setLoading(true)
       
-      // Get current month period
+      // Get current month period to match database records
       const now = new Date()
-      const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
-      const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      const year = now.getFullYear()
+      const month = now.getMonth() // 0-based month
+      
+      // Create month boundaries to match how database creates records
+      // Database uses: DATE_TRUNC('month', NOW()) for period_start
+      const currentMonthStart = new Date(Date.UTC(year, month, 1))
+      const currentMonthEnd = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999))
+      
+      console.log('🔍 Looking for usage record for month starting:', currentMonthStart.toISOString())
 
+      // Look for usage record where current date falls within the period range
       const { data, error } = await supabase
         .from('usage_tracking')
         .select('*')
         .eq('user_id', user.id)
-        .eq('period_start', periodStart.toISOString().split('T')[0])
-        .eq('period_end', periodEnd.toISOString().split('T')[0])
-        .single()
+        .lte('period_start', now.toISOString()) // period_start <= now
+        .gte('period_end', now.toISOString())   // period_end >= now
+        .order('period_start', { ascending: false })
+        .limit(1)
+        .maybeSingle() // Use maybeSingle instead of single to avoid errors when no data
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
+        console.error('❌ Usage tracking table error:', error)
+        
+        // If table doesn't exist or access is denied, create a default usage object
+        if (error.code === 'PGRST301' || error.message?.includes('relation') || error.code === '42P01') {
+          console.log('📊 Usage tracking table not available, using default limits')
+          setUsage({
+            id: 'default',
+            designs_used: 0,
+            refine_chats_used: 0,
+            period_start: currentMonthStart.toISOString(),
+            period_end: currentMonthEnd.toISOString(),
+          })
+          return
+        }
+        
         throw error
       }
 
       if (!data) {
+        console.log('📊 No usage record found, creating new one')
         // Create new usage record for this period
         const newUsage = {
           user_id: user.id,
           designs_used: 0,
           refine_chats_used: 0,
-          period_start: periodStart.toISOString().split('T')[0],
-          period_end: periodEnd.toISOString().split('T')[0],
+          period_start: currentMonthStart.toISOString(),
+          period_end: currentMonthEnd.toISOString(),
         }
 
         const { data: created, error: createError } = await supabase
@@ -78,13 +118,40 @@ export function useUsage() {
           .select()
           .single()
 
-        if (createError) throw createError
+        if (createError) {
+          console.error('❌ Error creating usage record:', createError)
+          // Fall back to default usage object
+          setUsage({
+            id: 'default',
+            designs_used: 0,
+            refine_chats_used: 0,
+            period_start: currentMonthStart.toISOString(),
+            period_end: currentMonthEnd.toISOString(),
+          })
+          return
+        }
+        
+        console.log('✅ Created new usage record:', created)
         setUsage(created)
       } else {
+        console.log('✅ Found existing usage record:', data)
         setUsage(data)
       }
     } catch (error) {
-      console.error('Error fetching usage:', error)
+      console.error('❌ Error fetching usage:', error)
+      
+      // Provide default usage limits as fallback
+      const nowFallback = new Date()
+      const fallbackStart = new Date(Date.UTC(nowFallback.getFullYear(), nowFallback.getMonth(), 1))
+      const fallbackEnd = new Date(Date.UTC(nowFallback.getFullYear(), nowFallback.getMonth() + 1, 0, 23, 59, 59, 999))
+      
+      setUsage({
+        id: 'default',
+        designs_used: 0,
+        refine_chats_used: 0,
+        period_start: fallbackStart.toISOString(),
+        period_end: fallbackEnd.toISOString(),
+      })
     } finally {
       setLoading(false)
     }
@@ -99,6 +166,13 @@ export function useUsage() {
       return false // Usage limit exceeded
     }
 
+    // If using default usage (table not available), just update local state
+    if (usage.id === 'default') {
+      console.log('📊 Using default usage tracking, updating locally')
+      setUsage(prev => prev ? { ...prev, designs_used: prev.designs_used + 1 } : null)
+      return true
+    }
+
     try {
       const { error } = await supabase
         .from('usage_tracking')
@@ -108,13 +182,20 @@ export function useUsage() {
         })
         .eq('id', usage.id)
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error incrementing design usage:', error)
+        // Still increment locally if database fails
+        setUsage(prev => prev ? { ...prev, designs_used: prev.designs_used + 1 } : null)
+        return true
+      }
 
       setUsage(prev => prev ? { ...prev, designs_used: prev.designs_used + 1 } : null)
       return true
     } catch (error) {
-      console.error('Error incrementing design usage:', error)
-      return false
+      console.error('❌ Error incrementing design usage:', error)
+      // Still increment locally if database fails
+      setUsage(prev => prev ? { ...prev, designs_used: prev.designs_used + 1 } : null)
+      return true
     }
   }
 
@@ -127,6 +208,13 @@ export function useUsage() {
       return false // Usage limit exceeded
     }
 
+    // If using default usage (table not available), just update local state
+    if (usage.id === 'default') {
+      console.log('📊 Using default usage tracking, updating locally')
+      setUsage(prev => prev ? { ...prev, refine_chats_used: prev.refine_chats_used + 1 } : null)
+      return true
+    }
+
     try {
       const { error } = await supabase
         .from('usage_tracking')
@@ -136,13 +224,20 @@ export function useUsage() {
         })
         .eq('id', usage.id)
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error incrementing refine usage:', error)
+        // Still increment locally if database fails
+        setUsage(prev => prev ? { ...prev, refine_chats_used: prev.refine_chats_used + 1 } : null)
+        return true
+      }
 
       setUsage(prev => prev ? { ...prev, refine_chats_used: prev.refine_chats_used + 1 } : null)
       return true
     } catch (error) {
-      console.error('Error incrementing refine usage:', error)
-      return false
+      console.error('❌ Error incrementing refine usage:', error)
+      // Still increment locally if database fails
+      setUsage(prev => prev ? { ...prev, refine_chats_used: prev.refine_chats_used + 1 } : null)
+      return true
     }
   }
 
